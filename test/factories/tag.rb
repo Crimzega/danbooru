@@ -23,5 +23,9 @@ FactoryBot.define do
     factory(:meta_tag) do
       category {Tag.categories.meta}
     end
+
+    factory(:species_tag) do
+      category {Tag.categories.species}
+    end
   end
 end

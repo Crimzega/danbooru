@@ -8,6 +8,7 @@ class TagListComponentTest < ViewComponent::TestCase
       @chartag = create(:character_tag)
       @gentag = create(:general_tag)
       @metatag = create(:meta_tag)
+      @speciestag = create(:species_tag)
       @tags = Tag.all
     end
 
