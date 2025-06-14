@@ -57,3 +57,16 @@
     color: var(--meta-tag-hover-color);
   }
 }
+
+.tag-type-6 a, a.tag-type-6 {
+  color: var(--species-tag-color);
+
+  &:link, &:visited {
+    color: var(--species-tag-color);
+  }
+
+  &:hover {
+    color: var(--species-tag-hiver-color)
+  }
+
+}
