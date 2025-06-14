@@ -11,6 +11,7 @@ module TagCategory
   COPYRIGHT = 3
   CHARACTER = 4
   META = 5
+  SPECIES = 6
 
   # Returns a hash mapping various tag categories to a numerical value.
   def mapping
@@ -26,6 +27,7 @@ module TagCategory
       "character" => 4,
       "copyright" => 3,
       "artist" => 1,
+      "species" => 6,
     }
   end
 
@@ -37,6 +39,7 @@ module TagCategory
       "Character" => 4,
       "General"   => 0,
       "Meta"      => 5,
+      "Species"   => 6,
     }
   end
 
@@ -48,6 +51,7 @@ module TagCategory
       3 => "copyright",
       1 => "artist",
       5 => "meta",
+      6 => "species",
     }
   end
 
@@ -62,7 +66,7 @@ module TagCategory
   end
 
   def categories
-    %w[general character copyright artist meta]
+    %w[general character copyright artist meta species]
   end
 
   def category_ids
@@ -75,12 +79,12 @@ module TagCategory
 
   # The order of tags on the post page tag list.
   def split_header_list
-    %w[artist copyright character general meta]
+    %w[artist copyright character general meta species]
   end
 
   # The order of tags inside the tag edit box, and on the comments page.
   def categorized_list
-    %w[artist copyright character meta general]
+    %w[artist copyright character meta general species]
   end
 
   # Which tag categories to show in the related tags box for a tag of the given type.
@@ -90,7 +94,8 @@ module TagCategory
       ARTIST    => [COPYRIGHT, CHARACTER, GENERAL],
       CHARACTER => [COPYRIGHT, CHARACTER, GENERAL],
       COPYRIGHT => [COPYRIGHT, CHARACTER, GENERAL],
-      META      => [META, GENERAL]
+      META      => [META, GENERAL],
+      SPECIES   => [SPECIES, GENERAL]
     }
   end
 
@@ -102,6 +107,7 @@ module TagCategory
       CHARACTER => [COPYRIGHT, CHARACTER, GENERAL, META],
       COPYRIGHT => [COPYRIGHT, CHARACTER, GENERAL, META],
       META      => [COPYRIGHT, CHARACTER, META, GENERAL],
+      SPECIES   => [COPYRIGHT, CHARACTER, GENERAL, SPECIES],
     }
   end
 
