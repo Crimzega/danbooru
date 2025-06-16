@@ -1,3 +1,6 @@
+import Notice from "./notice";
+import { uploadFilesOrURL } from "./utility";
+
 // @see app/components/dtext_editor_component.rb
 export default class DTextEditor {
   // The key bindings for the DText editor.
@@ -16,19 +19,39 @@ export default class DTextEditor {
     "m": (editor) => editor.toggleCode(),
   }
 
+  // The list of URLs that will be converted to DText links when pasted into the editor.
+  static SHORTLINKS = new Map([
+    [/^\/artists\/(\d+)$/,              (id) => `artist #${id}`],
+    [/^\/bulk_update_requests\/(\d+)$/, (id) => `bur #${id}`],
+    [/^\/comments\/(\d+)$/,             (id) => `comment #${id}`],
+    [/^\/forum_posts\/(\d+)$/,          (id) => `forum #${id}`],
+    [/^\/forum_topics\/(\d+)$/,         (id) => `topic #${id}`],
+    [/^\/media_assets\/(\d+)$/,         (id) => `asset #${id}`],
+    [/^\/notes\/(\d+)$/,                (id) => `note #${id}`],
+    [/^\/pools\/(\d+)$/,                (id) => `pool #${id}`],
+    [/^\/posts\/(\d+)$/,                (id) => `post #${id}`],
+    [/^\/wiki_pages\/([^.]+)$/,         (title) => `[[${title.replace(/_/g, " ")}]]`],
+    [/^\/users\/(\d+)$/,                (id) => `user #${id}`],
+  ]);
+
   root = null; // The root <div class="dtext-editor"> element.
   input = null; // The <input> or <textarea> element for DText input.
   mode = "edit"; // The current mode of the editor, either "edit" or "preview".
-  _html = ""; // The cached HTML representation of the DText input.
+  uploading = false; // True if the editor is currently uploading files.
+  previewLoading = false; // True if the editor is currently loading the preview HTML.
+  emojiSearch = ""; // The current search term for the emoji picker.
+  domains = []; // The list of the current site's domains. Used for determining which links belong to the current site.
 
   // @param {HTMLElement} root - The root <div class="dtext-editor"> element of the DText editor.
   constructor(root) {
     this.root = root;
     this.input = root.querySelector("input.dtext, textarea.dtext");
+    this.dtext = this.input.value;
   }
 
-  initialize() {
+  initialize({ domains = [] } = {}) {
     this.root.editor = this;
+    this.domains = domains;
   }
 
   // Toggle between "edit" and "preview" modes.
@@ -71,22 +94,21 @@ export default class DTextEditor {
     // If no text is selected, but we're inside a tag, then remove the nearest surrounding tags.
     if (this.selectedText.length === 0 && prefix.length > 0 && suffix.length > 0) {
       selectedText = `${prefix}${selectedText}${suffix}`;
-      this.input.setRangeText(selectedText.substring(startTag.length, selectedText.length - endTag.length), start - prefix.length, end + suffix.length, "select");
+      this.insertText(selectedText.substring(startTag.length, selectedText.length - endTag.length), start - prefix.length, end + suffix.length);
 
-      // If the cursor was inside a single word, preserve the cursor position and leave the word unselected.
-      if (!selectedText.match(/\s/)) {
+      // If the tag contained multiple words, select all the text between the tags.
+      if (selectedText.match(/\s/)) {
+        this.input.setSelectionRange(start - prefix.length, end + suffix.length - endTag.length - startTag.length);
+      // If the tag contained a single word, preserve the cursor position and leave the word unselected.
+      } else {
         this.input.setSelectionRange(start - startTag.length, start - startTag.length);
       }
-
-      this.input.focus();
     // If the selected text includes the tags, remove them.
     } else if (selectedText.startsWith(startTag) && selectedText.endsWith(endTag)) {
-      this.input.setRangeText(selectedText.substring(startTag.length, selectedText.length - endTag.length), start, end, "select");
-      this.input.focus();
+      this.insertText(selectedText.substring(startTag.length, selectedText.length - endTag.length), start, end);
     // If the selected text is immediately surrounded by the tags, remove them.
     } else if (this.input.value.substring(start - startTag.length, end + endTag.length) === `${startTag}${selectedText}${endTag}`) {
-      this.input.setRangeText(selectedText, start - startTag.length, end + endTag.length, "select");
-      this.input.focus();
+      this.insertText(selectedText, start - startTag.length, end + endTag.length);
     // Otherwise, insert the tags around the selected text or the current word.
     } else {
       this.insertMarkup(startTag, endTag);
@@ -112,7 +134,7 @@ export default class DTextEditor {
       let caret = this.input.selectionStart + startTag.length;
 
       selectedText = `${prefix}${suffix}`;
-      this.input.setRangeText(`${startTag}${selectedText}${endTag}`, start, end);
+      this.insertText(`${startTag}${selectedText}${endTag}`, start, end);
       this.input.setSelectionRange(caret, caret);
 
     // If text is selected, insert the tags around the selected text, ignoring surrounding whitespace.
@@ -121,11 +143,9 @@ export default class DTextEditor {
       let end = this.input.selectionEnd - (selectedText.length - selectedText.trimEnd().length);
 
       selectedText = selectedText.trim();
-      this.input.setRangeText(`${startTag}${selectedText}${endTag}`, start, end);
+      this.insertText(`${startTag}${selectedText}${endTag}`, start, end);
       this.input.setSelectionRange(start + startTag.length, start + startTag.length + selectedText.length);
     }
-
-    this.input.focus();
   }
 
   // Handle keyboard shortcuts.
@@ -136,6 +156,120 @@ export default class DTextEditor {
       handler(this);
       event.preventDefault();
     }
+  }
+
+  // Handle paste events. Convert links to DText format and inserts pasted images as embedded media assets.
+  onPaste(event) {
+    let text = event.clipboardData.getData("text");
+
+    if (event.clipboardData.files.length > 0) {
+      this.insertImages(event.clipboardData.files);
+    } else if (URL.canParse(text) && this.domains.includes(URL.parse(text).hostname)) {
+      this.insertUrl(text);
+      event.preventDefault();
+    }
+  }
+
+  // Insert a URL. If the URL is a full link (e.g. "https://example.com/posts/123"), it will be converted to a shortlink (e.g. "post #123").
+  insertUrl(text) {
+    let url = URL.parse(text);
+    let path = decodeURIComponent(url.pathname);
+    let [regex, formatter] = DTextEditor.SHORTLINKS.entries().find(([regex, _formatter]) => path.match(regex)) || [];
+    let dtext = formatter?.(path.match(regex)[1]);
+
+    if (dtext) {
+      this.insertText(dtext);
+    } else {
+      this.insertText(text);
+    }
+  }
+
+  // Insert the specified text, replacing the text between the `start` and `end` positions (by default, the currently selected text).
+  insertText(text, start = this.input.selectionStart, end = this.input.selectionEnd) {
+    let selected = this.input.selectionStart !== this.input.selectionEnd;
+
+    this.input.focus();
+
+    if (start !== this.input.selectionStart || end !== this.input.selectionEnd) {
+      this.input.setSelectionRange(start, end);
+    }
+
+    if (text.length > 0) {
+      // Use execCommand so that the undo history is updated.
+      document.execCommand("insertText", false, text);
+      // this.input.setRangeText(text, start, end, "select");
+    }
+
+    // Select the new text if the replaced text was previously selected.
+    if (selected) {
+      this.input.setSelectionRange(start, start + text.length);
+    }
+  }
+
+  // Insert text for a block-level element. Ensures the text is on its own line.
+  insertBlockText(text) {
+    // Prepend newlines if we're not at the start of a line.
+    if (!/(^|\n)\s*$/.test(this.selectionPrefix)) {
+      text = `\n${text}`;
+    }
+
+    // Append newlines if we're not at the end of a line.
+    if (!/^\s*(\n|$)/.test(this.selectionSuffix)) {
+      text = `${text}\n`;
+    }
+
+    this.insertText(text);
+  }
+
+  // Upload a list of files or a URL and insert the resulting images as embedded media assets (e.g. `* !asset #123`).
+  //
+  // @param {String|File[]} filesOrURL - The list of files or the URL to upload.
+  // @param {String} size - Whether to insert the images as a gallery of thumbnail images ("small") or as full-size images ("large").
+  // @param {String} caption - The caption to use for the images.
+  async insertImages(filesOrURL, size = "small", caption = "") {
+    try {
+      let prefix = size === "small" ? "* " : "";
+      let suffix = caption.length > 0 ? `: ${caption}` : "";
+
+      this.uploading = true;
+      Danbooru.Shortcuts.hide_tooltips(); // Hide the insert image menu.
+      let upload = await uploadFilesOrURL(filesOrURL);
+      this.uploading = false;
+
+      if (upload.success === false || upload.status === "error") {
+        throw new Error(upload.error);
+      }
+
+      let dtext = upload.upload_media_assets.map(uma => {
+        if (uma.media_asset.post) {
+          return `${prefix}!post #${uma.media_asset.post.id}${suffix}`;
+        } else {
+          return `${prefix}!asset #${uma.media_asset.id}${suffix}`;
+        }
+      }).join("\n");
+
+      this.insertBlockText(dtext);
+    } catch (error) {
+      Notice.error(error.message);
+    } finally {
+      this.uploading = false;
+    }
+  }
+
+  // Insert the emoji at the current cursor position.
+  insertEmoji(emoji) {
+    this.insertText(`:${emoji}:`);
+    Danbooru.Shortcuts.hide_tooltips();
+  }
+
+  // @returns {Boolean} True if the given emoji matches the current search term in the emoji picker.
+  emojiMatches(emoji) {
+    return emoji.toLowerCase().includes(this.emojiSearch.toLowerCase().replace(/[^a-zA-Z0-9]/g, ''));
+  }
+
+  // @returns {Boolean} True if the editor is currently loading (either uploading files or loading the preview).
+  get loading() {
+    return this.uploading || this.previewLoading;
   }
 
   // @returns {String} The currently selected text in the <textarea> element.
@@ -183,18 +317,18 @@ export default class DTextEditor {
     return [prefix, suffix];
   }
 
-  // @returns {String} The cached HTML representation of the DText input.
+  // @returns {String} The HTML representation of the DText input.
   async html() {
     if (this.previewMode) {
-      this._html = await this.fetchHtml();
+      return await this.fetchHtml();
+    } else {
+      return "";
     }
-
-    return this._html;
   }
 
   // @returns {String} The HTML representation of the DText input.
   async fetchHtml() {
-    this.loading = true;
+    this.previewLoading = true;
 
     let html = await $.post("/dtext_preview", {
       body: this.input.value,
@@ -202,7 +336,7 @@ export default class DTextEditor {
       media_embeds: this.root.dataset.mediaEmbeds === "true",
     });
 
-    this.loading = false;
+    this.previewLoading = false;
     return html;
   }
 }
