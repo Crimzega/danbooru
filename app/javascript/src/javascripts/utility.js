@@ -1,6 +1,8 @@
 import Rails from '@rails/ujs';
 import { delegate, hideAll } from 'tippy.js';
 import Notice from './notice';
+import capitalize from "lodash/capitalize";
+import Alpine from 'alpinejs';
 
 let Utility = {};
 
@@ -22,6 +24,16 @@ export function isTouchscreen() {
 
 export function isMobile() {
   return window.matchMedia("(max-width: 660px)").matches;
+}
+
+// The following function returns true if beforeinput, and thus getTargetRanges, is supported.
+//
+// https://developer.mozilla.org/en-US/docs/Web/API/Element/beforeinput_event#feature_detection
+export function isBeforeInputEventAvailable() {
+  return (
+    window.InputEvent &&
+    typeof InputEvent.prototype.getTargetRanges === "function"
+  );
 }
 
 Utility.dialog = function(title, html) {
@@ -130,7 +142,7 @@ export async function uploadURL(url) {
   }
 }
 
-// Upload a list of files or a URL to the site.
+// Upload a list of files or a URL to the site. Throws an error if the upload fails.
 //
 // @param {Object} params - The parameters to pass to the upload endpoint.
 // @param {Number} [pollDelay=250] - The delay in milliseconds between checking the upload status.
@@ -149,12 +161,77 @@ export async function createUpload(params, pollDelay = 250) {
   });
 
   let upload = await response.json();
-  while (upload.status !== "completed" && upload.status !== "error") {
+  while (upload.status !== "completed" && !uploadError(upload)) {
     await delay(pollDelay);
     upload = await $.get(`/uploads/${upload.id}.json`);
   }
 
+  let error = uploadError(upload);
+  if (error) {
+    throw new Error(error);
+  }
+
   return upload;
+}
+
+// Return the error message for a failed upload.
+export function uploadError(upload) {
+  // The upload failed during processing (normally because the URL didn't contain any images)
+  if (upload.status === "error") {
+    return upload.error;
+  // The upload failed with a 4xx or 5xx error (normally rate limiting)
+  } else if (upload.success === false && upload.message) {
+    return upload.message;
+  // The upload failed with a validation error (normally an invalid URL or too many queued assets)
+  } else if (upload.errors) {
+    return errorFromResponse(upload);
+  }
+}
+
+// Get the validation errors returned by an API call as a single string.
+// Equivalent to `@model.errors.full_messages.join('; ')`.
+export function errorFromResponse(apiResponse, separator = "; ") {
+  let errors = apiResponse.errors ?? {};
+
+  return Object.keys(errors).map(attribute => {
+    return errors[attribute].map(error => {
+      if (attribute === "base") {
+        return `${error}`;
+      } else {
+        return `${capitalize(attribute)} ${error}`;
+      }
+    });
+  }).join(separator);
+}
+
+// Call a function after all Alpine.js components on the page have been initialized.
+// Like jQuery's `$(document).ready()`, but for Alpine.js.
+export function alpineReady(callback) {
+  if (Alpine._initialized) {
+    callback();
+  } else {
+    $(document).on("alpine:initialized", callback);
+  }
+}
+
+$.fn.replaceFieldText = function(new_value) {
+  return this.each(function() {
+    if (this.undoStack) {
+      // If the element is using the custom undo stack implementation, simply assign directly to the input's value.
+      this.undoStack.save("danbooru.replaceFieldText");
+      this.value = new_value;
+    } else {
+      // Otherwise, try using execCommand to preserve the browser's native undo stack.
+      this.focus();
+      this.setSelectionRange(0, this.value.length);
+      let success = document.execCommand("insertText", false, new_value);
+      if (!success) {
+        // insertText is not supported by the browser.
+        // Fall back to assigning to value.
+        this.value = new_value;
+      }
+    }
+  })
 }
 
 $.fn.selectEnd = function() {
@@ -166,5 +243,6 @@ $.fn.selectEnd = function() {
 
 Utility.copyToClipboard = copyToClipboard;
 Utility.printPage = printPage;
+Utility.alpineReady = alpineReady;
 
 export default Utility

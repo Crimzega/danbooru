@@ -193,8 +193,8 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         end
 
         should "show a notice for a single tag search with multiple pending BURs in multiple topics" do
-          topic1 = as(@user) { create(:forum_topic) }
-          topic2 = as(@user) { create(:forum_topic) }
+          topic1 = create(:forum_topic)
+          topic2 = create(:forum_topic)
           create(:post, tag_string: "foo")
           create(:bulk_update_request, script: "create alias foo -> bar", forum_topic: topic1)
           create(:bulk_update_request, script: "create alias foo -> baz", forum_topic: topic1)
@@ -725,6 +725,11 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         assert_equal("Rating not selected", flash[:notice])
       end
 
+      should "re-render the upload page if the parent ID is invalid" do
+        @post = create_post!(tag_string: "test parent:999999999")
+        assert_response :success
+      end
+
       should "merge the tags and redirect to the original post if the upload is a duplicate of an existing post" do
         media_asset = create(:media_asset)
         post1 = create_post!(rating: "s", tag_string: "post1", media_asset: media_asset)
@@ -741,6 +746,15 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         assert_redirected_to @post
         assert_equal("s", @post.rating)
         assert_equal("tagme", @post.tag_string)
+      end
+
+      should "apply the upvote:self metatag" do
+        @user = create(:user)
+        @post = create_post!(user: @user, tag_string: "test upvote:self")
+
+        assert_redirected_to @post
+        assert_equal("test", @post.reload.tag_string)
+        assert_equal(true, @post.votes.positive.exists?(user: @user))
       end
 
       should "set the source" do
@@ -797,10 +811,12 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         assert_difference("ArtistCommentary.count", 1) do
           @post = create_post!(
             user: @user,
-            artist_commentary_title: "original title",
-            artist_commentary_desc: "original desc",
-            translated_commentary_title: "translated title",
-            translated_commentary_desc: "translated desc",
+            artist_commentary: {
+              original_title: "original title",
+              original_description: "original desc",
+              translated_title: "translated title",
+              translated_description: "translated desc",
+            },
           )
         end
 
@@ -815,7 +831,9 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         assert_difference("ArtistCommentary.count", 1) do
           @post = create_post!(
             user: @user,
-            artist_commentary_title: "title",
+            artist_commentary: {
+              original_title: "title",
+            },
           )
         end
 
@@ -830,10 +848,12 @@ class PostsControllerTest < ActionDispatch::IntegrationTest
         assert_no_difference("ArtistCommentary.count") do
           @post = create_post!(
             user: @user,
-            artist_commentary_title: "",
-            artist_commentary_desc: "",
-            translated_commentary_title: "",
-            translated_commentary_desc: "",
+            artist_commentary: {
+              original_title: "",
+              original_description: "",
+              translated_title: "",
+              translated_description: "",
+            },
           )
         end
 

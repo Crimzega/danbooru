@@ -54,9 +54,13 @@ class ForumTopicsController < ApplicationController
   end
 
   def create
-    @forum_topic = authorize ForumTopic.new(creator: CurrentUser.user, **permitted_attributes(ForumTopic))
-    @forum_topic.original_post.creator = CurrentUser.user
-    @forum_topic.original_post.creator_ip_addr = request.remote_ip
+    @forum_topic = authorize ForumTopic.new(permitted_attributes(ForumTopic).deep_merge(
+      creator: CurrentUser.user,
+      original_post_attributes: {
+        creator: CurrentUser.user,
+        creator_ip_addr: request.remote_ip,
+      },
+    ))
     @forum_topic.save
 
     respond_with(@forum_topic)
@@ -64,20 +68,20 @@ class ForumTopicsController < ApplicationController
 
   def update
     @forum_topic = authorize ForumTopic.find(params[:id])
-    @forum_topic.update(permitted_attributes(@forum_topic))
+    @forum_topic.update(updater: CurrentUser.user, **permitted_attributes(@forum_topic))
     respond_with(@forum_topic)
   end
 
   def destroy
     @forum_topic = authorize ForumTopic.find(params[:id])
-    @forum_topic.soft_delete!
+    @forum_topic.soft_delete!(updater: CurrentUser.user)
 
     respond_with(@forum_topic, notice: "Topic deleted")
   end
 
   def undelete
     @forum_topic = authorize ForumTopic.find(params[:id])
-    @forum_topic.undelete!
+    @forum_topic.undelete!(updater: CurrentUser.user)
 
     respond_with(@forum_topic, notice: "Topic undeleted")
   end

@@ -198,6 +198,13 @@ class PostTest < ActiveSupport::TestCase
 
   context "Parenting:" do
     context "Assigning a parent to a post" do
+      should "not allow parent IDs that don't exist" do
+        post = create(:post)
+        post.update(parent_id: 999_999_999)
+
+        assert_equal(["post does not exist"], post.errors[:parent])
+      end
+
       should "not allow a post to be its own parent" do
         post = create(:post)
         post.update(parent_id: post.id)
@@ -257,6 +264,17 @@ class PostTest < ActiveSupport::TestCase
         p2.reload
         assert(!p1.has_children?, "Old parent should not have a child")
         assert(p2.has_children?, "New parent should have a child")
+      end
+
+      should "swap the parent and child when setting the parent to the child" do
+        parent = create(:post)
+        child = create(:post, parent: parent)
+        parent.update!(parent: child)
+
+        assert_equal(child.reload.id, parent.reload.parent_id)
+        assert_nil(child.parent_id)
+        assert_equal(false, parent.has_children?)
+        assert_equal(true, child.has_children?)
       end
     end
 
@@ -752,7 +770,17 @@ class PostTest < ActiveSupport::TestCase
 
           should "not allow self-parenting" do
             @post.update(:tag_string => "parent:#{@post.id}")
-            assert_nil(@post.parent_id)
+            assert_equal(["Post cannot have itself as a parent"], @post.errors[:base])
+          end
+
+          should "not allow parent IDs that don't exist" do
+            @post.update(parent: @parent)
+            assert_equal(@parent.id, @post.parent_id)
+
+            @post.update(tag_string: "test parent:999999999")
+            assert_equal(["post does not exist"], @post.errors[:parent])
+            assert_equal("tag1 tag2", @post.reload.tag_string)
+            assert_equal(@parent.id, @post.parent_id)
           end
 
           should "clear the parent with parent:none" do
@@ -777,6 +805,27 @@ class PostTest < ActiveSupport::TestCase
 
             @post.update(:tag_string => "-parent:#{@parent.id}")
             assert_nil(@post.parent_id)
+          end
+
+          should "swap the parent and child when setting the parent to the child" do
+            parent = create(:post)
+            child = create(:post, parent: parent)
+            parent.update!(tag_string: "parent:#{child.id}")
+
+            assert_equal(child.reload.id, parent.reload.parent_id)
+            assert_nil(child.parent_id)
+            assert_equal(false, parent.has_children?)
+            assert_equal(true, child.has_children?)
+          end
+
+          should "not update the child if updating the parent fails" do
+            parent = create(:post)
+            child = create(:post, parent: parent)
+            parent.update(rating: "does_not_exist", tag_string: "parent:#{child.id}")
+
+            assert_equal(true, parent.errors.present?)
+            assert_nil(parent.reload.parent_id)
+            assert_equal(parent.id, child.parent_id)
           end
         end
 
@@ -1804,14 +1853,8 @@ class PostTest < ActiveSupport::TestCase
       end
 
       context "with a source" do
-        context "that contains unicode characters" do
-          should "normalize the source to NFC form" do
-            source1 = "poke\u0301mon" # pokémon (nfd form)
-            source2 = "pok\u00e9mon"  # pokémon (nfc form)
-            @post.update!(source: source1)
-            assert_equal(source2, @post.source)
-          end
-        end
+        should normalize_attribute(:source).from("pokémon".unicode_normalize(:nfd)).to("pokémon".unicode_normalize(:nfc))
+        should normalize_attribute(:source).from(nil).to("")
 
         context "that is not from pixiv" do
           should "clear the pixiv id" do

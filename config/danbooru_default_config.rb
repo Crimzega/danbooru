@@ -175,7 +175,7 @@ module Danbooru
         ENV["RAILS_LOG_LEVEL"]
       elsif debug_mode
         :debug
-      elsif Rails.env.production?
+      elsif !Rails.env.local?
         :error
       elsif Rails.env.development?
         :info
@@ -320,14 +320,6 @@ module Danbooru
 
       # You can set `openssl_verify_mode` to `none` to disable verification of the server's SSL certificate if you have a self-signed certificate.
       # "smtps://username:password@example.com?openssl_verify_mode=none"
-    end
-
-    # Deprecated. Use `mail_delivery_url` instead.
-    def mail_delivery_method
-    end
-
-    # Deprecated. Use `mail_delivery_url` instead.
-    def mail_settings
     end
 
     # The path to where uploaded files are stored. You can change this to change where files are
@@ -601,6 +593,30 @@ module Danbooru
 
     # Your Xiaohongshu "gid" cookie. Login to Xiaohongshu then use the devtools to find the "gid" cookie.
     def xiaohongshu_session_cookie
+    end
+
+    # Your Xiaohongshu "webId" cookie
+    def xiaohongshu_webid_cookie
+    end
+
+    # Your Xiaohongshu "webId" cookie
+    def xiaohongshu_web_session_cookie
+    end
+
+    # Your Huashijie "userId" cookie.
+    def huashijie_user_id
+    end
+
+    # Your Huashijie "token" cookie.
+    def huashijie_session_cookie
+    end
+
+    # Your Gelbooru user ID.
+    def gelbooru_user_id
+    end
+
+    # Your Gelbooru API key. Found at https://gelbooru.com/index.php?page=account&s=options
+    def gelbooru_api_key
     end
 
     # Your Google Blogger API key. Go to https://developers.google.com/blogger/docs/3.0/using#APIKey to create an API key.

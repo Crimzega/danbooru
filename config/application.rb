@@ -77,7 +77,7 @@ module Danbooru
     # request param containing the word 'password' etc.
     #
     # https://guides.rubyonrails.org/configuring.html#config-filter-parameters
-    config.filter_parameters += [:password, :api_key, :secret, :ip_addr, :address, :email_verification_key, :signed_id] if Rails.env.production?
+    config.filter_parameters += [:password, :api_key, :secret, :ip_addr, :address, :email_verification_key, :signed_id] if !Rails.env.local?
 
     raise "Danbooru.config.secret_key_base not configured" if Danbooru.config.secret_key_base.blank?
     config.secret_key_base = Danbooru.config.secret_key_base
@@ -97,6 +97,10 @@ module Danbooru
 
     config.action_controller.action_on_unpermitted_parameters = :raise
 
+    # https://guides.rubyonrails.org/configuring.html#config-active-record-async-query-executor
+    config.active_record.async_query_executor = :global_thread_pool
+    config.active_record.global_executor_concurrency = Danbooru.config.max_concurrency.to_i
+
     if ENV["DOCKER_IMAGE_REVISION"].present?
       config.x.git_hash = ENV["DOCKER_IMAGE_REVISION"]
     elsif system("type git > /dev/null && git rev-parse --show-toplevel > /dev/null")
@@ -106,7 +110,7 @@ module Danbooru
     end
 
     # In development mode, allow the site to be embedded in an <iframe> so that it can be viewed inside things like VS Code or Github Codespaces.
-    config.action_dispatch.default_headers.delete("X-Frame-Options") if Rails.env.development?
+    config.action_dispatch.default_headers.delete("X-Frame-Options") if Rails.env.local?
 
     # Disable the origin check to fix `HTTP Origin header didn't match request.base_url` errors when running behind a reverse
     # proxy. This is necessary because some reverse proxies (such as Github Codespaces) set the Origin header incorrectly.

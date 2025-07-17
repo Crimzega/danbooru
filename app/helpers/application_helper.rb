@@ -54,12 +54,6 @@ module ApplicationHelper
     end
   end
 
-  def wordbreakify(string)
-    lines = string.scan(/.{1,10}/)
-    wordbreaked_string = lines.map {|str| h(str)}.join("<wbr>")
-    raw(wordbreaked_string)
-  end
-
   def version_type_links(params)
     html = []
     %w[previous current].each do |type|
@@ -87,6 +81,10 @@ module ApplicationHelper
     id = id_prefix.to_s + id.to_s
 
     link_to(*args, id: id, class: "py-1.5 px-3 #{klass}", **options, &block)
+  end
+
+  def subnav_divider
+    tag.span("|", class: "text-muted select-none")
   end
 
   def format_text(text, references: DText.preprocess([text]), **options)
@@ -150,15 +148,15 @@ module ApplicationHelper
         human_time = time_ago_in_words(time).gsub(/about|over|less than|almost/, "")
         time_tag("#{human_time} ago", time)
       elsif time > Time.zone.today.beginning_of_year
-        time_tag(time.strftime("%b %e"), time)
+        time_tag(time.strftime("%B #{time.day.ordinalize}"), time)
       else
-        time_tag(time.strftime("%b %e, %Y"), time)
+        time_tag(time.strftime("%B #{time.day.ordinalize}, %Y"), time)
       end
     elsif time.future?
       if time < 1.day.from_now
         time_tag("in #{time_ago_in_words(time)}", time)
       else
-        time_tag(time.strftime("%b %e, %Y"), time)
+        time_tag(time.strftime("%B #{time.day.ordinalize}, %Y"), time)
       end
     end
   end

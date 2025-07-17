@@ -9,7 +9,7 @@ $spacer: 0.25rem; /* 4px */
 .visible { visibility: visible; }
 
 .font-arial { font-family: var(--arial-font); }
-.font-monospace { font: var(--monospace-font); }
+.font-monospace { font-family: var(--monospace-font); }
 .font-header { font-family: var(--header-font); }
 .font-normal { font-weight: normal; }
 .font-bold { font-weight: bold; }
@@ -29,17 +29,16 @@ $spacer: 0.25rem; /* 4px */
 .block { display: block; }
 .flex { display: flex; }
 .grid { display: grid; }
+.contents { display: contents; }
 
-.sr-only, %sr-only {
-  position: absolute;
-  pointer-events: none;
-  opacity: 0;
-}
+.resize { resize: both; }
+.resize-none { resize: none; }
 
 .text-left   { text-align: left; }
 .text-center { text-align: center; }
 .text-right  { text-align: right; }
 .text-muted { color: var(--muted-text-color); }
+.\!text-right  { text-align: right !important; }
 
 .text-xxs { font-size: var(--text-xxs); }
 .text-xs  { font-size: var(--text-xs); }
@@ -69,6 +68,8 @@ $spacer: 0.25rem; /* 4px */
 .break-words { word-break: break-word !important; overflow-wrap: anywhere; }
 .whitespace-nowrap { white-space: nowrap; }
 .whitespace-pre { white-space: pre; }
+.whitespace-pre-wrap { white-space: pre-wrap; }
+.text-balance { text-wrap: balance; }
 
 .pointer-events-none { pointer-events: none; }
 .select-none { user-select: none; }
@@ -118,9 +119,6 @@ $spacer: 0.25rem; /* 4px */
 .border-x   { border-left-width: 1px; border-right-width: 1px; }
 
 .border-current { border-color: currentcolor; }
-
-.focus\:outline-0:focus { outline-width: 0; }
-.focus-within\:outline-auto:focus-within { outline: auto; }
 
 .rounded-sm, %rounded-sm { border-radius: 0.5 * $spacer; }
 .rounded,    %rounded    { border-radius: 1   * $spacer; }
@@ -288,6 +286,7 @@ $spacer: 0.25rem; /* 4px */
 .max-h-225px { max-height: 225px; }
 .max-h-270px { max-height: 270px; }
 .max-h-360px { max-height: 360px; }
+.max-h-480px { max-height: 480px; }
 .max-h-720px { max-height: 720px; }
 .max-h-screen { max-height: 100vh; }
 .max-h-inherit { max-height: inherit; }
@@ -352,9 +351,9 @@ $spacer: 0.25rem; /* 4px */
 
 .float-right { float: right; }
 
-.-rotate-90 { transform: rotate(-90deg); }
-.rotate-90 { transform: rotate(90deg); }
-.rotate-180 { transform: rotate(180deg); }
+.-rotate-90 { rotate: -90deg; }
+.rotate-90 { rotate: 90deg; }
+.rotate-180 { rotate: 180deg; }
 
 .grid-cols-1  { grid-template-columns: repeat(1, minmax(0, 1fr)); }
 .grid-cols-2  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -397,9 +396,8 @@ a.text-danger:hover { color: var(--error-hover-color) !important; }
 .bg\:error-color { background-color: var(--error-color); }
 .bg-transparent { background-color: transparent; }
 
-.transition-opacity {
-  transition: opacity 0.15s ease;
-}
+.transition-opacity { transition: opacity 0.15s ease; }
+.transition-transform { transition: transform, translate, scale, rotate 0.15s ease; }
 
 [inert], .inert {
   pointer-events: none;
@@ -465,10 +463,12 @@ a.text-danger:hover { color: var(--error-hover-color) !important; }
 }
 
 %badge {
+  display: inline-block;
   padding: 0.125rem 0.25rem;
   border-radius: 2 * $spacer;
   font-size: var(--text-xs);
   color: var(--inverse-text-color);
+  line-height: 1;
 }
 
 .badge-blue {
@@ -591,11 +591,11 @@ a.text-danger:hover { color: var(--error-hover-color) !important; }
 
 @keyframes animate-spin {
   from {
-    transform: rotate(0deg);
+    rotate: 0deg;
   }
 
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 
@@ -611,9 +611,16 @@ a.text-danger:hover { color: var(--error-hover-color) !important; }
   .md\:space-y-0 > * + * { margin-top: 0; }
 
   .md\:w-180px { width: 180px; }
+  .md\:w-320px { width: 320px; }
   .md\:w-360px { width: 360px; }
 
+  .md\:p-2   { padding: 2 * $spacer; }
   .md\:mx-auto { margin-left: auto; margin-right: auto; }
+
+  .md\:border-l { border-left-width: 1px; }
+
+  .md\:-rotate-90 { rotate: -90deg; }
+  .md\:rotate-90 { rotate: 90deg; }
 }
 
 @media screen and (width <= 660px) {
@@ -627,11 +634,15 @@ a.text-danger:hover { color: var(--error-hover-color) !important; }
   .sm\:order-1 { order: 1; }
   .sm\:order-2 { order: 2; }
 
+  .sm\:mx-auto { margin-left: auto; margin-right: auto; }
   .sm\:mx-2 { margin-left: 2 * $spacer; margin-right: 2 * $spacer; }
   .sm\:mt-2 { margin-top: 2 * $spacer; }
 
   .sm\:p-2 { padding: 2 * $spacer; }
 
+  .sm\:border-b { border-bottom-width: 1px; }
+
+  .sm\:w-full { width: 100%; }
   .\!sm\:w-full { width: 100% !important; }
 }
 

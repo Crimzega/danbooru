@@ -527,9 +527,9 @@ class Note {
 
     async preview_text(text) {
       this.display_text("Loading...");
-      let response = await $.post("/note_previews", { body: text });
+      let response = await $.post("/notes/preview.json", { body: text });
 
-      this.display_text(response.body);
+      this.display_text(response.sanitized_body);
       this.initialize();
       this.$note_body.show();
     }
@@ -577,7 +577,7 @@ class Note {
 
       $dialog.dialog({
         width: 360,
-        height: 240,
+        height: 250,
         position: {
           my: "right",
           at: "right-20",

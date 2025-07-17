@@ -436,7 +436,10 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
         assert_equal("xxx", User.last.name)
         assert_equal(User.last, User.last.authenticate_password("xxxxx1"))
         assert_equal("webmaster@danbooru.donmai.us", User.last.email_address.address)
+        assert_equal(false, User.last.email_address.is_verified?)
         assert_equal(true, User.last.user_events.user_creation.exists?)
+        assert_equal(false, User.last.user_events.email_change.exists?)
+        assert_equal(false, ModAction.email_address_update.exists?)
 
         perform_enqueued_jobs
         assert_performed_jobs(1, only: MailDeliveryJob)
@@ -612,6 +615,16 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
         get_auth edit_user_path(@user), @user
         assert_response :success
       end
+
+      should "allow the owner to view another user's settings" do
+        get_auth edit_user_path(@user), create(:owner_user)
+        assert_response :success
+      end
+
+      should "not allow a user to view another user's settings" do
+        get_auth edit_user_path(@user), create(:admin_user)
+        assert_response 403
+      end
     end
 
     context "settings action" do
@@ -631,8 +644,16 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
     context "update action" do
       should "update a user" do
         put_auth user_path(@user), @user, params: {:user => {:favorite_tags => "xyz"}}
-        @user.reload
-        assert_equal("xyz", @user.favorite_tags)
+
+        assert_redirected_to edit_user_path(@user)
+        assert_equal("xyz", @user.reload.favorite_tags)
+      end
+
+      should "not allow a user to update another user's settings" do
+        put_auth user_path(@user), create(:owner_user), params: { user: { per_page: 123 }}
+
+        assert_response 403
+        assert_equal(20, @user.reload.per_page)
       end
 
       context "for a Member-level user" do
@@ -680,6 +701,34 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
 
           assert_equal("xyz", @user.reload.favorite_tags)
         end
+      end
+    end
+
+    context "promote action" do
+      should "work for a moderator" do
+        get_auth promote_user_path(@user), create(:moderator_user)
+
+        assert_response :success
+      end
+
+      should "not work for a regular user" do
+        get_auth promote_user_path(@user), @user
+
+        assert_response 403
+      end
+    end
+
+    context "demote action" do
+      should "work for a moderator" do
+        get_auth demote_user_path(@user), create(:moderator_user)
+
+        assert_response :success
+      end
+
+      should "not work for a regular user" do
+        get_auth demote_user_path(@user), @user
+
+        assert_response 403
       end
     end
   end

@@ -90,6 +90,12 @@
         Logged in with a backup code.
       <% when "backup_code_reauthenticate" %>
         Reauthenticated with a backup code.
+      <% when "api_key_create" %>
+        Created a new API key.
+      <% when "api_key_update" %>
+        Updated an API key.
+      <% when "api_key_delete" %>
+        Deleted an API key.
       <% end %>
     <% end %>
 
@@ -129,7 +135,7 @@
     <% end %>
 
     <% t.column "IP Address" do |user_event| %>
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-1 leading-none">
         <% ip_addr = user_event.ip_addr %>
 
         <% if IpAddressPolicy.new(CurrentUser.user, ip_addr).show? && (user_event.ip_geolocation&.is_proxy? || ip_addr.is_tor?) %>

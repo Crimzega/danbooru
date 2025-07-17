@@ -32,14 +32,16 @@ class CommentsController < ApplicationController
   end
 
   def update
-    @comment = authorize Comment.find(params[:id])
-    @comment.update(permitted_attributes(@comment))
+    @comment = Comment.find(params[:id])
+    @comment.attributes = { updater: CurrentUser.user, **permitted_attributes(@comment) }
+    authorize(@comment).save
+
     respond_with(@comment)
   end
 
   def create
-    @comment = authorize Comment.new(creator: CurrentUser.user, creator_ip_addr: request.remote_ip)
-    @comment.update(permitted_attributes(@comment))
+    @comment = authorize Comment.new(creator: CurrentUser.user, creator_ip_addr: request.remote_ip, **permitted_attributes(Comment))
+    @comment.save
 
     respond_with(@comment, notice: "Comment posted") do |format|
       format.html do
@@ -65,13 +67,13 @@ class CommentsController < ApplicationController
 
   def destroy
     @comment = authorize Comment.find(params[:id])
-    @comment.update(is_deleted: true)
+    @comment.soft_delete(updater: CurrentUser.user)
     respond_with(@comment)
   end
 
   def undelete
     @comment = authorize Comment.find(params[:id])
-    @comment.update(is_deleted: false)
+    @comment.undelete(updater: CurrentUser.user)
     respond_with(@comment)
   end
 

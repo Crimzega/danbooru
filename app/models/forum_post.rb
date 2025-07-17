@@ -1,18 +1,14 @@
 # frozen_string_literal: true
 
 class ForumPost < ApplicationRecord
-  MAX_IMAGES = 5
-  MAX_VIDEO_SIZE = 1.megabyte
-  MAX_LARGE_EMOJI = 1
-  MAX_SMALL_EMOJI = 100
-
   # attr_readonly :topic_id # XXX broken by accepts_nested_attributes_for in ForumTopic
   attr_accessor :creator_ip_addr
 
-  dtext_attribute :body, media_embeds: true # defines :dtext_body
+  # defines :dtext_body
+  dtext_attribute :body, media_embeds: { max_embeds: 5, max_large_emojis: 5, max_small_emojis: 100, max_video_size: 1.megabyte, sfw_only: true }
 
   belongs_to :creator, class_name: "User"
-  belongs_to_updater
+  belongs_to :updater, class_name: "User", default: -> { creator }
   belongs_to :topic, class_name: "ForumTopic", inverse_of: :forum_posts
 
   has_many :moderation_reports, as: :model
@@ -27,7 +23,6 @@ class ForumPost < ApplicationRecord
   validates :body, visible_string: true, length: { maximum: 200_000 }, if: :body_changed?
   validate :validate_deletion_of_original_post
   validate :validate_undeletion_of_post
-  validate :validate_body
 
   before_create :autoreport_spam
   before_save :handle_reports_on_deletion
@@ -101,33 +96,6 @@ class ForumPost < ApplicationRecord
     end
   end
 
-  def validate_body
-    if dtext_body.block_emoji_names.count > MAX_LARGE_EMOJI
-      errors.add(:base, "Can't include more than #{MAX_LARGE_EMOJI} #{"sticker".pluralize(MAX_LARGE_EMOJI)}")
-    end
-
-    if dtext_body.inline_emoji_names.count > MAX_SMALL_EMOJI
-      errors.add(:base, "Can't include more than #{MAX_SMALL_EMOJI} #{"emoji".pluralize(MAX_SMALL_EMOJI)}")
-    end
-
-    if dtext_body.embedded_media.count > MAX_IMAGES
-      errors.add(:base, "Can't include more than #{MAX_IMAGES} #{"image".pluralize(MAX_IMAGES)}")
-      return # don't check the actual images if the user included too many images
-    end
-
-    if dtext_body.embedded_posts.any? { _1.is_video? && _1.file_size > MAX_VIDEO_SIZE } || dtext_body.embedded_media_assets.any? { _1.is_video? && _1.file_size > MAX_VIDEO_SIZE }
-      errors.add(:base, "Can't include videos larger than #{MAX_VIDEO_SIZE.to_fs(:human_size)}")
-    end
-
-    if dtext_body.embedded_posts.any? { |embedded_post| embedded_post.is_nsfw? }
-      errors.add(:base, "Can't post NSFW images")
-    end
-
-    if dtext_body.embedded_media_assets.any? { |embedded_asset| embedded_asset.is_ai_nsfw? }
-      errors.add(:base, "Can't post NSFW images")
-    end
-  end
-
   def autoreport_spam
     if SpamDetector.new(self, user_ip: creator_ip_addr).spam?
       moderation_reports << ModerationReport.new(creator: User.system, reason: "Spam.")
@@ -148,13 +116,13 @@ class ForumPost < ApplicationRecord
     end
   end
 
-  def delete!
-    update(is_deleted: true)
+  def delete!(updater = CurrentUser.user)
+    update(is_deleted: true, updater: updater)
     update_topic_updated_at_on_delete
   end
 
-  def undelete!
-    update(is_deleted: false)
+  def undelete!(updater = CurrentUser.user)
+    update(is_deleted: false, updater: updater)
     update_topic_updated_at_on_undelete
   end
 

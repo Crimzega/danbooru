@@ -45,13 +45,11 @@ class Post < ApplicationRecord
   deletable
   has_bit_flags %w[has_embedded_notes _unused_has_cropped is_taken_down]
 
-  normalize :source, :normalize_source
+  normalizes :source, with: ->(source) { Post.normalize_source(source) }, apply_to_nil: true
   before_validation :merge_old_changes
   before_validation :apply_pre_metatags
   before_validation :validate_new_tags
   before_validation :normalize_tags
-  before_validation :blank_out_nonexistent_parents
-  before_validation :remove_parent_loops
   validate :uploader_is_not_limited, on: :create
   validate :post_is_not_allowed, on: :create
   validate :validate_no_parent_cycles
@@ -63,6 +61,7 @@ class Post < ApplicationRecord
   validates :rating, presence: { message: "not selected" }
   validates :rating, inclusion: { in: RATINGS.keys, message: "must be #{RATINGS.keys.map(&:upcase).to_sentence(last_word_connector: ", or ")}" }, if: -> { rating.present? }
   validates :source, length: { maximum: 1200 }
+  validates :parent, presence: { message: "post does not exist" }, if: -> { parent_id.present? && parent_id_changed? }
   before_save :parse_pixiv_id
   before_save :added_tags_are_valid
   before_save :removed_tags_are_valid
@@ -71,6 +70,7 @@ class Post < ApplicationRecord
   before_save :has_enough_tags
   before_save :update_tag_post_counts
   before_save :update_tag_category_counts
+  before_create :remove_blank_artist_commentary
   before_create :autoban
   after_save :create_version
   after_save :update_parent_on_save
@@ -79,7 +79,7 @@ class Post < ApplicationRecord
 
   belongs_to :approver, class_name: "User", optional: true
   belongs_to :uploader, :class_name => "User", :counter_cache => "post_upload_count"
-  belongs_to :parent, class_name: "Post", optional: true
+  belongs_to :parent, class_name: "Post", optional: true, autosave: true
   has_one :media_asset, -> { active }, foreign_key: :md5, primary_key: :md5, inverse_of: :post
   has_one :media_metadata, through: :media_asset
   has_one :artist_commentary, :dependent => :destroy
@@ -101,7 +101,7 @@ class Post < ApplicationRecord
   has_many :dtext_links, -> { embedded_post }, foreign_key: :link_target
   has_many :embedding_wiki_pages, through: :dtext_links, source: :model, source_type: "WikiPage"
 
-  attr_accessor :old_tag_string, :old_parent_id, :old_source, :old_rating, :has_constraints, :disable_versioning, :post_edit
+  attr_accessor :old_tag_string, :old_parent_id, :old_source, :old_rating, :post_edit
 
   scope :pending, -> { where(is_pending: true) }
   scope :flagged, -> { where(is_flagged: true) }
@@ -121,24 +121,19 @@ class Post < ApplicationRecord
     has_many :versions, -> { Rails.env.test? ? order("post_versions.updated_at ASC, post_versions.id ASC") : order("post_versions.updated_at ASC") }, class_name: "PostVersion", dependent: :destroy
   end
 
-  def self.new_from_upload(upload_media_asset, tag_string: nil, rating: nil, parent_id: nil, source: nil, artist_commentary_title: nil, artist_commentary_desc: nil, translated_commentary_title: nil, translated_commentary_desc: nil, is_pending: nil, add_artist_tag: false)
+  def self.new_from_upload(upload_media_asset, tag_string: nil, rating: nil, parent_id: nil, source: nil, artist_commentary: {}, is_pending: nil, add_artist_tag: false)
     upload = upload_media_asset.upload
     media_asset = upload_media_asset.media_asset
 
     # XXX depends on CurrentUser
-    commentary = ArtistCommentary.new(
-      original_title: artist_commentary_title,
-      original_description: artist_commentary_desc,
-      translated_title: translated_commentary_title,
-      translated_description: translated_commentary_desc,
-    )
+    commentary = ArtistCommentary.new(**artist_commentary)
 
     if add_artist_tag
       tag_string = "#{tag_string} #{upload_media_asset.source_extractor&.artists.to_a.map(&:tag).map(&:name).join(" ")}".strip
       tag_string += " " if tag_string.present?
     end
 
-    post = Post.new(
+    Post.new(
       uploader: upload.uploader,
       md5: media_asset&.md5,
       file_ext: media_asset&.file_ext,
@@ -150,7 +145,7 @@ class Post < ApplicationRecord
       rating: rating,
       parent_id: parent_id,
       is_pending: !upload.uploader.is_contributor? || is_pending.to_s.truthy?,
-      artist_commentary: (commentary if commentary.any_field_present?),
+      artist_commentary: commentary,
     )
   end
 
@@ -620,11 +615,8 @@ class Post < ApplicationRecord
             self.parent_id = nil
           end
 
-        in "parent", /^\d+$/ => new_parent_id
-          if new_parent_id.to_i != id && Post.exists?(new_parent_id)
-            self.parent_id = new_parent_id.to_i
-            remove_parent_loops
-          end
+        in "parent", new_parent_id
+          self.parent_id = new_parent_id
 
         in "rating", /\A([#{RATINGS.keys.join}])/i
           self.rating = $1.downcase
@@ -735,6 +727,19 @@ class Post < ApplicationRecord
   end
 
   concerning :ParentMethods do
+    def parent=(new_parent)
+      self.parent_id = new_parent&.id
+    end
+
+    def parent_id=(new_parent_id)
+      super
+
+      # Allow reversing a parent-child relationship by making the child into the parent without creating a loop.
+      if parent != self && parent&.parent == self
+        parent.parent_id = nil
+      end
+    end
+
     # @return [Array<Post>] The list of this post's ancestors (its parent, grandparent, great-grandparent, etc).
     def ancestors
       ancestors = []
@@ -767,19 +772,6 @@ class Post < ApplicationRecord
 
     def update_has_children_flag
       update(has_children: children.exists?, has_active_children: children.undeleted.exists?)
-    end
-
-    def blank_out_nonexistent_parents
-      if parent_id.present? && parent.nil?
-        self.parent_id = nil
-      end
-    end
-
-    def remove_parent_loops
-      if parent.present? && parent.parent_id.present? && parent.parent_id == id
-        parent.parent_id = nil
-        parent.save
-      end
     end
 
     def update_parent_on_destroy
@@ -1934,6 +1926,12 @@ class Post < ApplicationRecord
       if tags.count(&:general?) < 10
         warnings.add(:base, "Uploads must have at least 10 general tags. Read [[howto:tag]] for guidelines on tagging your uploads")
       end
+    end
+  end
+
+  concerning :ArtistCommentaryMethods do
+    def remove_blank_artist_commentary
+      self.artist_commentary = nil if !artist_commentary&.any_field_present?
     end
   end
 

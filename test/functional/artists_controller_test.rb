@@ -74,10 +74,12 @@ class ArtistsControllerTest < ActionDispatch::IntegrationTest
       end
 
       should "render for an invalid url" do
-        artist = create(:artist, url_string: "https://.auone-net.jp/~hakueki/")
+        artist = build(:artist, url_string: "https://.auone-net.jp/~hakueki/")
+        artist.save(validate: false)
         get artist_path(artist.id)
 
         assert_response :success
+        assert_equal("https://.auone-net.jp/~hakueki/", artist.urls.last.url)
       end
     end
 
@@ -112,10 +114,12 @@ class ArtistsControllerTest < ActionDispatch::IntegrationTest
       end
 
       should "render for an invalid url" do
-        artist = create(:artist, url_string: "https://.auone-net.jp/~hakueki/")
+        artist = build(:artist, url_string: "https://.auone-net.jp/~hakueki/")
+        artist.save(validate: false)
         get_auth edit_artist_path(artist.id), @user
 
         assert_response :success
+        assert_equal("https://.auone-net.jp/~hakueki/", artist.urls.last.url)
       end
     end
 
@@ -209,7 +213,7 @@ class ArtistsControllerTest < ActionDispatch::IntegrationTest
 
         assert_response :redirect
         assert_equal("artist2", Artist.last.name)
-        assert_equal("Duplicate of [[artist1]]", flash[:notice])
+        assert_equal("Potential duplicate of [[artist1]]", flash[:notice])
       end
     end
 
@@ -234,7 +238,7 @@ class ArtistsControllerTest < ActionDispatch::IntegrationTest
         put_auth artist_path(@artist2), @user, params: { artist: { url_string: "https://www.pixiv.net/users/1234" }}
 
         assert_redirected_to @artist2
-        assert_equal("Duplicate of [[artist1]]", flash[:notice])
+        assert_equal("Potential duplicate of [[artist1]]", flash[:notice])
       end
     end
 

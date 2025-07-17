@@ -1,18 +1,18 @@
-<header id="top" class="md:space-y-0 mt-1" x-data="{ menuOpen: false }">
+<header id="top" class="md:space-y-0 mt-2" x-data="{ menuOpen: false }">
   <div class="flex items-center justify-between mx-8 sm:mx-2 text-xxl">
     <div id="app-name-header" class="inline-flex items-center gap-2">
       <%= link_to image_pack_tag("static/danbooru-logo-128x128.png", class: "h-9 hover:brightness-125"), main_app.root_path, id: "app-logo" %>
-      <%= link_to Danbooru.config.app_name, main_app.root_path, id: "app-name", class: "font-header font-bold" %>
+      <%= link_to Danbooru.config.app_name, main_app.root_path, id: "app-name", class: "font-header font-bold leading-none" %>
     </div>
 
-    <a href="javascript:void(0)" class="mobile-only focus:outline-0" x-on:click="menuOpen = !menuOpen">
+    <a class="mobile-only cursor-pointer" x-on:click="menuOpen = !menuOpen">
       <%= menu_icon(class: "block w-6", "x-show": "!menuOpen") %>
       <%= close_icon(class: "block w-6", "x-show": "menuOpen", "x-cloak": true) %>
     </a>
   </div>
 
   <nav id="nav" class="desktop-only mt-2" x-bind:class="{ 'desktop-only': !menuOpen }">
-    <menu id="main-menu" class="flex flex-wrap items-center px-5 sm:p-2">
+    <div id="main-menu" class="flex flex-wrap items-center px-5 sm:p-2">
       <% if current_user.is_anonymous? %>
         <%= nav_link_to("Login", main_app.login_path(url: request.fullpath), class: "font-bold", rel: "nofollow") %>
       <% else %>
@@ -39,12 +39,12 @@
       <% end %>
 
       <%= nav_link_to("More »", main_app.site_map_path) %>
-    </menu>
+    </div>
 
     <% if content_for?(:secondary_links) %>
-      <menu id="subnav-menu" class="flex flex-wrap items-center px-5 sm:p-2">
+      <div id="subnav-menu" class="flex flex-wrap items-center px-5 sm:p-2">
         <%= content_for :secondary_links %>
-      </menu>
+      </div>
     <% end %>
   </nav>
 </header>

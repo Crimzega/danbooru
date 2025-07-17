@@ -56,6 +56,21 @@ class ArtistTest < ActiveSupport::TestCase
       should_not allow_value("-blah").for(:name)
       should_not allow_value("_").for(:name)
       should_not allow_value("").for(:name)
+      should_not allow_value("-foo").for(:name)
+      should_not allow_value("user:foo").for(:name)
+      should_not allow_value("foo,bar").for(:name)
+      should_not allow_value("foo*bar").for(:name)
+      should_not allow_value("foo(bar").for(:name)
+
+      should "allow editing an artist with an invalid name when the name isn't changed" do
+        artist = build(:artist, name: "foo(bar")
+        artist.save!(validate: false)
+
+        artist.update!(other_names: ["foo"])
+        assert_equal(true, artist.valid?)
+        assert_equal("foo(bar", artist.name)
+        assert_equal(["foo"], artist.other_names)
+      end
     end
 
     context "that has been banned" do
@@ -104,11 +119,6 @@ class ArtistTest < ActiveSupport::TestCase
       end
     end
 
-    should "normalize its name" do
-      artist = FactoryBot.create(:artist, :name => "  AAA BBB  ")
-      assert_equal("aaa_bbb", artist.name)
-    end
-
     should "resolve ambiguous urls" do
       bobross = FactoryBot.create(:artist, :name => "bob_ross", :url_string => "http://artists.com/bobross/image.jpg")
       bob = FactoryBot.create(:artist, :name => "bob", :url_string => "http://artists.com/bob/image.jpg")
@@ -124,8 +134,7 @@ class ArtistTest < ActiveSupport::TestCase
     should "not allow invalid urls" do
       artist = FactoryBot.build(:artist, :url_string => "blah")
       assert_equal(false, artist.valid?)
-      assert_includes(artist.errors["urls.url"], "'blah' must begin with http:// or https:// ")
-      assert_includes(artist.errors["urls.url"], "'blah' has a hostname '' that does not contain a dot")
+      assert_includes(artist.errors["urls.url"], "'blah' is not a valid URL")
     end
 
     should "allow fixing invalid urls" do
@@ -407,7 +416,7 @@ class ArtistTest < ActiveSupport::TestCase
       end
     end
 
-    context "the #normalize_other_names method" do
+    context "validating other names" do
       subject { build(:artist) }
 
       should normalize_attribute(:other_names).from(["   foo"]).to(["foo"])
@@ -429,9 +438,17 @@ class ArtistTest < ActiveSupport::TestCase
       should normalize_attribute(:other_names).from("foo foo").to(["foo"])
       should normalize_attribute(:other_names).from("foo bar").to(["foo", "bar"])
       should normalize_attribute(:other_names).from("_foo_ Bar").to(["_foo_", "Bar"])
+
+      should_not allow_value(51.times.to_a.map(&:to_s)).for(:other_names)
+      should allow_value(50.times.to_a.map(&:to_s)).for(:other_names)
+
+      should_not allow_value(["x" * 81]).for(:other_names)
+      should allow_value(["x" * 80]).for(:other_names)
     end
 
-    context "group name" do
+    context "validating the group name" do
+      subject { build(:artist) }
+
       should normalize_attribute(:group_name).from("   ").to("")
       should normalize_attribute(:group_name).from("   foo").to("foo")
       should normalize_attribute(:group_name).from("foo   ").to("foo")
@@ -445,6 +462,32 @@ class ArtistTest < ActiveSupport::TestCase
       should normalize_attribute(:group_name).from("_foo_ Bar").to("_foo__Bar")
       should normalize_attribute(:group_name).from("pokémon".unicode_normalize(:nfd)).to("pokémon".unicode_normalize(:nfkc))
       should normalize_attribute(:group_name).from("🏳️‍🌈").to("🏳️‍🌈")
+
+      should_not allow_value("x" * 81).for(:group_name)
+      should allow_value("x" * 80).for(:group_name)
+    end
+
+    context "normalizing the name" do
+      subject { build(:artist) }
+
+      should normalize_attribute(:name).from("   foo").to("foo")
+      should normalize_attribute(:name).from("foo   ").to("foo")
+      should normalize_attribute(:name).from("foo\n").to("foo")
+      should normalize_attribute(:name).from("Foo Bar").to("foo_bar")
+    end
+
+    context "validating the URLs" do
+      should "allow valid URLs" do
+        assert_equal(true, build(:artist, url_string: "https://example.com").valid?)
+        assert_equal(true, build(:artist, url_string: "http://example.com/#{"x" * 280}").valid?)
+        assert_equal(true, build(:artist, url_string: 150.times.map { |n| "https://example.com/#{n}" }.join(" ")).valid?)
+      end
+
+      should "not allow invalid URLs" do
+        assert_equal(false, build(:artist, url_string: "invalid").valid?)
+        assert_equal(false, build(:artist, url_string: "http://example.com/#{"x" * 300}").valid?)
+        assert_equal(false, build(:artist, url_string: 151.times.map { |n| "https://example.com/#{n}" }.join(" ")).valid?)
+      end
     end
 
     should "search on its name should return results" do
@@ -571,6 +614,16 @@ class ArtistTest < ActiveSupport::TestCase
 
         assert_equal(Tag.categories.artist, tag.reload.category)
       end
+
+      should "remove the new name from the other names" do
+        artist = create(:artist)
+
+        artist.update!(name: "artist1", other_names: ["artist1", "artist2"])
+        assert_equal(["artist2"], artist.other_names)
+
+        artist.update!(name: "Test Artist", other_names: ["test_artist", "artist2"])
+        assert_equal(["artist2"], artist.other_names)
+      end
     end
 
     context "when saving" do
@@ -648,6 +701,28 @@ class ArtistTest < ActiveSupport::TestCase
         assert_equal("Nice_and_Cool niceandcool", artist.other_names_string)
         assert_includes(artist.urls.map(&:url), "https://www.pixiv.net/users/906442")
         assert_includes(artist.urls.map(&:url), "https://www.pixiv.net/stacc/niceandcool")
+      end
+    end
+
+    context "when setting other_names" do
+      should "remove names that match the artist name exactly" do
+        artist = create(:artist, name: "test_artist")
+
+        artist.update!(other_names_string: "test_artist another_name")
+        assert_equal(["another_name"], artist.other_names)
+        assert_equal("another_name", artist.other_names_string)
+
+        artist.update!(other_names: ["test_artist", "another_name", "third_name"])
+        assert_equal(["another_name", "third_name"], artist.other_names)
+
+        artist.update!(other_names: ["Test_Artist", "another_name"])
+        assert_equal(["Test_Artist", "another_name"], artist.other_names)
+
+        artist.update!(other_names_string: "test_artist different_name")
+        assert_equal(["different_name"], artist.reload.other_names)
+
+        artist.update!(other_names: %w[name name])
+        assert_equal(["name"], artist.reload.other_names)
       end
     end
   end

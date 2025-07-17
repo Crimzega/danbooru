@@ -1,15 +1,22 @@
 .prose {
   --max-sticker-size: 64px;
   --max-emoji-size: 24px;
+  --paragraph-spacing: 0.75rem;
 
   word-break: break-word;
+  text-wrap: pretty;
+
+  p, ul, pre, blockquote, details, div:where(.spoiler), table, h1, h2, h3, h4, h5, h6, article, media-gallery {
+    margin-bottom: var(--paragraph-spacing);
+  }
+
+  // XXX Don't give emojis bottom margins when the comment ends in a run of block emojis.
+  emoji[data-mode="block"]:has(~ :not(emoji[data-mode="block"])) {
+    margin-bottom: var(--paragraph-spacing);
+  }
 
   *:last-child {
     margin-bottom: 0;
-  }
-
-  p, ul, pre, blockquote, details, div.spoiler, table, h1, h2, h3, h4, h5, h6, article, media-gallery, emoji[data-mode="block"] {
-    margin-bottom: 0.75rem;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -75,7 +82,7 @@
   }
 
   code, pre {
-    font: var(--monospace-font);
+    font-family: var(--monospace-font);
     background: var(--dtext-code-background);
   }
 
@@ -172,17 +179,12 @@
   }
 
   article {
-    --media-embed-size: 720px;
-
-    @media (width <= 660px) {
-      margin-left: auto;
-      margin-right: auto;
-    }
+    --media-embed-size: 270px;
 
     .media-embed-image {
       img, video, canvas {
         border-radius: 0.25rem;
-        max-width: var(--media-embed-size);
+        max-width: 100%;
         max-height: var(--media-embed-size);
         width: auto;
         height: auto;
@@ -190,18 +192,22 @@
     }
 
     .media-embed-caption {
-      text-align: center;
-      font-size: 0.8em;
-      padding: 0.5rem;
       line-height: 1.4;
-      color: var(--muted-text-color);
     }
   }
 
   emoji[data-mode="block"] {
     display: inline-block;
-    font-size: var(--text-xxl);
-    line-height: 1.25;
+    font-size: var(--max-sticker-size);
+    vertical-align: middle;
+    line-height: 1;
+  }
+
+  emoji[data-mode="inline"] {
+    display: inline-block;
+    font-size: var(--max-emoji-size);
+    vertical-align: text-bottom;
+    line-height: 1;
   }
 
   emoji[data-mode="inline"] img {
@@ -265,11 +271,5 @@
     > div {
       padding: 1rem;
     }
-  }
-}
-
-.new-comment, .edit_comment, .new_forum_post, article.comment, article.forum-post {
-  article.dtext-media-embed {
-    --media-embed-size: 225px;
   }
 }

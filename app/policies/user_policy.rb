@@ -13,8 +13,12 @@ class UserPolicy < ApplicationPolicy
     record == user
   end
 
+  def edit?
+    record.id == user.id || user.is_owner?
+  end
+
   def update?
-    record.id == user.id || user.is_admin?
+    record.id == user.id
   end
 
   def deactivate?
@@ -49,12 +53,20 @@ class UserPolicy < ApplicationPolicy
     user.is_gold?
   end
 
+  def can_recover_account?
+    user.is_admin? && record.level < user.level && record.level < User::Levels::MODERATOR
+  end
+
   def rate_limit_for_create(**_options)
-    { rate: 1.0 / 5.minutes, burst: 5 }
+    if record.invalid?
+      { action: "users:create:invalid", rate: 1.0 / 1.second, burst: 10 }
+    else
+      { action: "users:create", rate: 1.0 / 5.minutes, burst: 3 }
+    end
   end
 
   def permitted_attributes_for_create
-    [:name, :password, :password_confirmation, { email_address_attributes: [:address] }]
+    [:name, :password, :password_confirmation]
   end
 
   def permitted_attributes_for_update
@@ -94,4 +106,5 @@ class UserPolicy < ApplicationPolicy
 
   alias_method :profile?, :show?
   alias_method :settings?, :edit?
+  alias_method :demote?, :promote?
 end

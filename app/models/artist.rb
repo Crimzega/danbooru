@@ -8,15 +8,20 @@ class Artist < ApplicationRecord
 
   deletable
 
-  normalize :name, :normalize_name
-  normalize :group_name, :normalize_other_name
-  normalize :other_names, :normalize_other_names
-  array_attribute :other_names # XXX must come after `normalize :other_names`
+  normalizes :name, with: ->(name) { Artist.normalize_name(name) }
+  normalizes :group_name, with: ->(name) { Artist.normalize_other_name(name) }
+  normalizes :other_names, with: ->(names) { Artist.normalize_other_names(names) }
+  array_attribute :other_names # XXX must come after `normalizes :other_names`
 
   validate :validate_artist_name
-  validates :name, tag_name: true, uniqueness: true
+  validate :validate_other_names, if: :other_names_changed?
+  validate :validate_urls
+  validates :name, tag_name: true, uniqueness: true, if: :name_changed?
+  validates :group_name, length: { maximum: 80 }, if: :group_name_changed?
+  validates :other_names, length: { maximum: 50, too_long: "can't have more than 50 names" }, if: :other_names_changed?
   after_validation :add_url_warnings
 
+  before_save :remove_redundant_other_names
   before_save :update_tag_category
   after_save :create_version
   after_save :clear_url_string_changed
@@ -64,6 +69,12 @@ class Artist < ApplicationRecord
       self.url_string_changed = false
     end
 
+    def validate_urls
+      if urls.any?(&:new_record?) && urls.size > 150
+        errors.add(:urls, "can't have more than 150 URLs")
+      end
+    end
+
     class_methods do
       # Find all artist URLs matching `regex`, and replace the `from` regex with the `to` string.
       def rewrite_urls(regex, from, to)
@@ -93,6 +104,10 @@ class Artist < ApplicationRecord
 
     def pretty_name
       name.tr("_", " ")
+    end
+
+    def remove_redundant_other_names
+      self.other_names -= [name] if name_changed? || other_names_changed?
     end
   end
 
@@ -180,6 +195,12 @@ class Artist < ApplicationRecord
 
       if tag_alias.present?
         errors.add(:name, "'#{name}' is aliased to '#{tag_alias.consequent_name}'")
+      end
+    end
+
+    def validate_other_names
+      if other_names.any? { |name| name.length > 80 }
+        errors.add(:other_names, "can't have names more than 80 characters long")
       end
     end
 
@@ -305,8 +326,11 @@ class Artist < ApplicationRecord
   end
 
   def add_url_warnings
-    urls.each do |url|
-      warnings.add(:base, url.warnings.full_messages.join("; ")) if url.warnings.any?
+    duplicate_artists = urls.select(&:new_record?).flat_map(&:duplicate_artists).sort.uniq.without(self)
+
+    if duplicate_artists.present?
+      names = duplicate_artists.map { |artist| "[[#{artist.name}]]" }
+      warnings.add(:base, "Potential duplicate of #{names.to_sentence}")
     end
   end
 
